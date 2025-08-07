@@ -1,70 +1,42 @@
-import asyncio
-import logging
-import os
-import yt_dlp
+import asyncio, os, yt_dlp, re, logging
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
 )
 
-# Читаем токен из файла token.txt
-with open("token.txt", "r") as f:
+# токен читаем из token.txt
+with open("token.txt") as f:
     TOKEN = f.read().strip()
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 
-# Пример финальных опций
 YDL_OPTS = {
-    # 1. Ограничиваем видео до 720p (или 480p, если ещё меньше)
     "format": "bestvideo[height<=720]+bestaudio/best",
-    # 2. Шаблон сохранения
     "outtmpl": "downloads/%(id)s.%(ext)s",
-    # 3. Гарантируем mp4-контейнер
     "merge_output_format": "mp4",
-    # 4. Загрузка фрагментов (частей видео) в 4 потока параллельно
     "concurrent_fragment_downloads": 4,
-    # 5. Предпочитать нативный HLS (быстрее обход FFmpeg для TS)
-    "hls_prefer_native": True,
-    "hls_use_mpegts": True,
-    # 6. Меньше API-запросов к YouTube — используем Android-клиент
-    "extractor_args": {
-        "youtube": {"player_client": "android"}
-    },
-    # 7. Добавляем куки только если нужны (для Instagram)
-    **({"cookiefile": "cookies.txt"} if os.path.isfile("cookies.txt") else {}),
-
- # 1) НЕ скачивать плейлисты, только одиночные видео
     "noplaylist": True,
-
-    # 2) (повторим для скорости) ограничиваем 720p, параллельные фрагменты
-    "format": "bestvideo[height<=720]+bestaudio/best",
-    "concurrent_fragment_downloads": 4,
-
-    # 3) (по желанию) прямо «берём» mp4 без лишнего HLS-TS
-    "hls_prefer_native": True,
-    "hls_use_mpegts": True,
-
+    # cookiefile по-прежнему добавляем, если нужно:
+    **({"cookiefile": "cookies.txt"} if os.path.isfile("cookies.txt") else {}),
 }
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Пришли мне ссылку на видео из Instagram, YouTube, TikTok или другой поддерживаемый сайт командой\n"
-        "/download <URL>\n"
-        "и я постараюсь его скачать и отправить тебе."
+        "Привет! Просто кинь мне ссылку на видео из Instagram, YouTube, TikTok…"
     )
 
 async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Использование: /download <URL на видео>")
-        return
+    # получаем URL
+    if context.args:
+        url = context.args[0]
+    else:
+        text = update.message.text or ""
+        m = re.search(r'(https?://\S+)', text)
+        if not m:
+            return
+        url = m.group(1)
 
-    url = context.args[0]
     os.makedirs("downloads", exist_ok=True)
     msg = await update.message.reply_text("Скачиваю… ⏳")
 
@@ -85,15 +57,19 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.edit_text("Готово! 🎉")
         os.remove(filename)
+
     except Exception as e:
         logging.error("Ошибка при скачивании: %s", e)
         await msg.edit_text(f"Не удалось скачать видео:\n{e}")
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("download", download_media))
+
+    # ловим все тексты, содержащие http:// или https://
+    url_filter = filters.TEXT & filters.Regex(r'https?://\S+')
+    app.add_handler(MessageHandler(url_filter, download_media))
 
     app.run_polling()
 

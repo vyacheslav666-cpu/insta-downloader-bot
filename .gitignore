@@ -1,2 +1,5 @@
 git diff --name-only origin/main
 downloads/
+cookies.txt
+token.txt
+
