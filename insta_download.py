@@ -9,44 +9,55 @@ from telegram.ext import (
     ContextTypes
 )
 
-TOKEN = "8448892888:AAFcAub3t-wHYeAOYvAgcITe3MFyap_71Wg" 
+# Читаем токен из файла token.txt
+with open("token.txt", "r") as f:
+    TOKEN = f.read().strip()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
+YDL_OPTS = {
+    "format": "bestvideo+bestaudio/best",
+    "outtmpl": "downloads/%(id)s.%(ext)s",
+    "merge_output_format": "mp4",
+    # <- вот эта строчка:
+    "cookiefile": "cookies.txt",
+}
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Пришли ссылку на видео из Instagram командой /download <URL>, и я его скачиваю."
+        "Привет! Пришли мне ссылку на видео из Instagram, YouTube, TikTok или другой поддерживаемый сайт командой\n"
+        "/download <URL>\n"
+        "и я постараюсь его скачать и отправить тебе."
     )
 
-async def download_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Использование: /download <URL на пост или рилс>")
+        await update.message.reply_text("Использование: /download <URL на видео>")
         return
 
     url = context.args[0]
-    ydl_opts = {
-        "format": "bestvideo+bestaudio/best",
-        "outtmpl": "downloads/%(id)s.%(ext)s"
-    }
     os.makedirs("downloads", exist_ok=True)
-    msg = await update.message.reply_text("Загружаю… ⏳")
+    msg = await update.message.reply_text("Скачиваю… ⏳")
 
     try:
-        # Получаем текущий цикл и запускаем yt-dlp в пуле потоков
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(
             None,
-            lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=True)
+            lambda: yt_dlp.YoutubeDL(YDL_OPTS).extract_info(url, download=True)
         )
-        # Формируем имя файла по тому же ydl_opts
-        filename = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info)
+        filename = yt_dlp.YoutubeDL(YDL_OPTS).prepare_filename(info)
 
-        # Отправляем видео
+        filesize = os.path.getsize(filename)
         with open(filename, "rb") as video:
-            await update.message.reply_video(video)
+            if filesize > 50 * 1024 * 1024:
+                await update.message.reply_document(video)
+            else:
+                await update.message.reply_video(video)
+
         await msg.edit_text("Готово! 🎉")
     except Exception as e:
         logging.error("Ошибка при скачивании: %s", e)
@@ -56,7 +67,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("download", download_instagram))
+    app.add_handler(CommandHandler("download", download_media))
 
     app.run_polling()
 
