@@ -18,12 +18,37 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# Пример финальных опций
 YDL_OPTS = {
-    "format": "bestvideo+bestaudio/best",
+    # 1. Ограничиваем видео до 720p (или 480p, если ещё меньше)
+    "format": "bestvideo[height<=720]+bestaudio/best",
+    # 2. Шаблон сохранения
     "outtmpl": "downloads/%(id)s.%(ext)s",
+    # 3. Гарантируем mp4-контейнер
     "merge_output_format": "mp4",
-    # <- вот эта строчка:
-    "cookiefile": "cookies.txt",
+    # 4. Загрузка фрагментов (частей видео) в 4 потока параллельно
+    "concurrent_fragment_downloads": 4,
+    # 5. Предпочитать нативный HLS (быстрее обход FFmpeg для TS)
+    "hls_prefer_native": True,
+    "hls_use_mpegts": True,
+    # 6. Меньше API-запросов к YouTube — используем Android-клиент
+    "extractor_args": {
+        "youtube": {"player_client": "android"}
+    },
+    # 7. Добавляем куки только если нужны (для Instagram)
+    **({"cookiefile": "cookies.txt"} if os.path.isfile("cookies.txt") else {}),
+
+ # 1) НЕ скачивать плейлисты, только одиночные видео
+    "noplaylist": True,
+
+    # 2) (повторим для скорости) ограничиваем 720p, параллельные фрагменты
+    "format": "bestvideo[height<=720]+bestaudio/best",
+    "concurrent_fragment_downloads": 4,
+
+    # 3) (по желанию) прямо «берём» mp4 без лишнего HLS-TS
+    "hls_prefer_native": True,
+    "hls_use_mpegts": True,
+
 }
 
 
@@ -59,6 +84,7 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_video(video)
 
         await msg.edit_text("Готово! 🎉")
+        os.remove(filename)
     except Exception as e:
         logging.error("Ошибка при скачивании: %s", e)
         await msg.edit_text(f"Не удалось скачать видео:\n{e}")
