@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    container_name: insta-bot
+    restart: unless-stopped
+    volumes:
+      - ./downloads:/app/downloads
+      - ./token.txt:/app/token.txt:ro
+      - ./cookies.txt:/app/cookies.txt:ro   # раскомментируй если есть
+
